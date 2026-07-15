@@ -1,0 +1,17 @@
+# Compiled binaries
+sender
+receiver
+*.o
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Generated logs/results
+playout_log.json
+relay_stats.json
+
+# Editors
+.vscode/
+.idea/
+*.swp

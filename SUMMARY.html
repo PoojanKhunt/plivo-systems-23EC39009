@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Plivo Systems Assignment - 23EC39009</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 850px;
+            margin: auto;
+            padding: 20px;
+            background-color: #f9f9f9;
+        }
+
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+
+        h1,
+        h2 {
+            color: #2c3e50;
+            border-bottom: 2px solid #eee;
+            padding-bottom: 10px;
+        }
+
+        code {
+            background: #f4f4f4;
+            padding: 2px 5px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+        }
+
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 20px 0;
+        }
+
+        th,
+        td {
+            border: 1px solid #ddd;
+            padding: 12px;
+            text-align: left;
+        }
+
+        th {
+            background-color: #f2f2f2;
+        }
+
+        .diagram {
+            font-family: monospace;
+            background: #eee;
+            padding: 15px;
+            border-radius: 5px;
+            text-align: center;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>Plivo Systems Assignment</h1>
+        <p><strong>Roll Number:</strong> 23EC39009</p>
+
+        <h2>1. Overview</h2>
+        <p>The objective was to transmit a continuous UDP media stream across an unreliable relay, maintaining a
+            deadline miss rate &lt;1% within a 2x bandwidth constraint. Our protocol solves packet loss, duplication,
+            reordering, and jitter using overlapping Forward Error Correction (FEC), a thread-safe circular jitter
+            buffer, and precise deadline-driven scheduling.</p>
+
+        <h2>2. System Architecture</h2>
+        <div class="diagram">
+            Harness Source &rarr; Sender &rarr; Custom UDP Protocol &rarr; Relay &rarr; Receiver &rarr; Harness Player
+        </div>
+        <p>The sender processes one audio frame every 20ms, transforming raw input into two distinct packet types:
+            <b>Data Packets</b> (original payload) and <b>Parity Packets</b> (sliding XOR window). This allows the
+            receiver to reconstruct missing data locally without network-latency-heavy retransmissions.</p>
+
+        <h2>3. Design Choices & System-Level Details</h2>
+        <ul>
+            <li><b>Buffer Ownership & Concurrency:</b> We utilized C11 <code>stdatomic.h</code> to manage the circular
+                buffer. The <i>receive thread</i> owns the write-access, and the <i>playback thread</i> owns the
+                read-access. Atomic operations ensure memory visibility without the overhead of heavy
+                <code>pthread_mutex</code> locks.</li>
+            <li><b>Byte Order:</b> All sequence numbers and parity base indices are serialized using Network Byte Order
+                (Big-Endian) via <code>htonl()</code>/<code>ntohl()</code>, ensuring platform-agnostic packet parsing.
+            </li>
+            <li><b>Non-blocking Safety:</b> The receive loop is strictly non-blocking. It handles incoming UDP datagrams
+                in a continuous loop, pushing parity blocks to the recovery engine instantly. The system never blocks on
+                I/O, ensuring it can process bursts of packets during jitter spikes.</li>
+            <li><b>Timing Strategy:</b> To eliminate OS scheduler jitter, we utilize a two-stage scheduler:
+                <code>usleep()</code> until 2ms before the deadline, followed by a tight <b>lock-free busy-spin</b> that
+                monitors the atomic <code>received</code> flag until 20µs before playout.</li>
+        </ul>
+
+        <h2>4. Network Handling Strategy</h2>
+        <table>
+            <tr>
+                <th>Network Issue</th>
+                <th>Handling Strategy</th>
+            </tr>
+            <tr>
+                <td>Packet Loss</td>
+                <td>Overlapping sliding-window XOR parity recovery.</td>
+            </tr>
+            <tr>
+                <td>Packet Reordering</td>
+                <td>Sequence-indexed circular buffer (O(1) insertion).</td>
+            </tr>
+            <tr>
+                <td>Duplicate Packets</td>
+                <td>Ignored using atomic <code>received</code> state flags.</td>
+            </tr>
+            <tr>
+                <td>Jitter Variation</td>
+                <td>Receiver-side playout jitter buffer.</td>
+            </tr>
+        </table>
+
+        <h2>5. Constraints & Limitations</h2>
+        <ul>
+            <li><b>Buffer Size:</b> The jitter buffer is sized at 65,536 slots to ensure it can survive the extreme
+                burst-loss and latency scenarios presented in Profile B.</li>
+            <li><b>FEC Logic:</b> Recovery succeeds when exactly one packet inside a protected sliding window is
+                missing. Burst losses spanning the entire window cannot be reconstructed.</li>
+            <li><b>Dynamic Adaptation:</b> The playback delay is currently fixed via CLI configuration; while optimal
+                for the given profiles, a production system would adapt this dynamically based on RFC 3550 variance
+                estimations.</li>
+        </ul>
+
+        <h2>6. Conclusion</h2>
+        <p>This implementation provides a lightweight, robust real-time transport protocol. By combining lock-free
+            atomics with overlapping XOR FEC, the design provides high resilience against network instability while
+            strictly adhering to the 2x bandwidth overhead and <1% miss rate constraints.</p>
+    </div>
+</body>
+
+</html>

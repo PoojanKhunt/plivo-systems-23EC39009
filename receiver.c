@@ -20,7 +20,7 @@
 
 typedef struct {
   uint8_t payload[PAYLOAD_SIZE];
-  atomic_int received; // Priority 2: Lock-free atomic state flag
+  atomic_int received;
 } Frame;
 
 typedef struct {
@@ -75,7 +75,7 @@ void attempt_recovery(uint32_t target_seq) {
         }
       }
       memcpy(buffer[target_seq % BUF_SIZE].payload, rec, PAYLOAD_SIZE);
-      // Publish availability without locking
+
       atomic_store_explicit(&buffer[target_seq % BUF_SIZE].received, 1,
                             memory_order_release);
       return;
